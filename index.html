@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Мониторинг пинга провайдеров</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #chartContainer {
+            position: relative;
+            margin: auto;
+            height: 500px;
+            width: 90%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Мониторинг пинга провайдеров</h1>
+    <div id="chartContainer">
+         <canvas id="globalChart"></canvas>
+    </div>
+
+    <script>
+        const socket = io();
+        let globalLabels = [];
+        const ctx = document.getElementById('globalChart').getContext('2d');
+
+        function getProviderColor(providerName) {
+            switch (providerName.toUpperCase()) {
+                case 'RAKETA':
+                    return {
+                        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                        borderColor: 'rgb(255, 255, 255)'
+                    };
+                case 'DOMRU':
+                    return {
+                        backgroundColor: 'rgba(255, 0, 0, 0.7)',
+                        borderColor: 'rgb(255, 0, 0)'
+                    };
+                case 'ROSTELEKOM':
+                    return {
+                        backgroundColor: 'rgba(128, 0, 128, 0.7)',
+                        borderColor: 'rgb(255, 165, 0)'
+                    };
+                case 'BASE':
+                    return {
+                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        borderColor: 'rgb(255, 165, 0)'
+                    };
+                default:
+                    return {
+                        backgroundColor: `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 0.7)`,
+                        borderColor: `rgb(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255})`
+                    };
+            }
+        }
+
+        const globalChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: globalLabels,
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 200,
+                        ticks: {
+                            callback: function(value) {
+                                return value + ' мс';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Сравнение пинга провайдеров по сайтам'
+                    }
+                }
+            }
+        });
+
+        socket.on('update_chart', function(data) {
+            const providerName = data.provider;
+            const pingResults = data.ping_results;
+
+            let needUpdateLabels = false;
+            pingResults.forEach(result => {
+                if (!globalLabels.includes(result.host)) {
+                    globalLabels.push(result.host);
+                    needUpdateLabels = true;
+                }
+            });
+
+            if (needUpdateLabels) {
+                globalChart.data.labels = globalLabels;
+                globalChart.data.datasets.forEach(dataset => {
+                    while (dataset.data.length < globalLabels.length) {
+                        dataset.data.push(null);
+                    }
+                });
+            }
+
+            let dataset = globalChart.data.datasets.find(d => d.label === providerName);
+            if (!dataset) {
+                const colors = getProviderColor(providerName);
+                dataset = {
+                    label: providerName,
+                    data: new Array(globalLabels.length).fill(null),
+                    backgroundColor: colors.backgroundColor,
+                    borderColor: colors.borderColor,
+                    borderWidth: 1
+                };
+                globalChart.data.datasets.push(dataset);
+            }
+
+            pingResults.forEach(result => {
+                const index = globalLabels.indexOf(result.host);
+                dataset.data[index] = result.ping;
+            });
+
+            globalChart.update();
+        });
+    </script>
+</body>
+</html>
+
